@@ -1,14 +1,14 @@
 # Migration Fixes - January 6, 2025
 
 ## Overview
-This document details the fixes applied to the database migrations to resolve SQL syntax errors.
+This document details all fixes applied to the database migrations to resolve SQL syntax errors.
 
 ## Fixed Migrations
 
-### 1. Enhanced Reviews System Migration
+### 1. Enhanced Reviews System Migration - Fix #1
 **File**: `supabase/migrations/20250106_enhance_reviews.sql`
 
-**Error**:
+**Error #1**:
 ```
 ERROR: 42809: FILTER specified, but round is not an aggregate function
 LINE 41: ROUND(AVG(rating)::numeric, 2) FILTER (WHERE status = 'approved') as average_rating,
@@ -38,7 +38,57 @@ ROUND(AVG(rating) FILTER (WHERE status = 'approved')::numeric, 2) as average_rat
 
 ---
 
-### 2. Payment Flow Improvements Migration
+### 2. Enhanced Reviews System Migration - Fix #2
+**File**: `supabase/migrations/20250106_enhance_reviews.sql`
+
+**Error #2**:
+```
+ERROR: 42703: column profiles.role does not exist
+```
+
+**Root Cause**:
+The RLS policy tried to check for admin role, but the profiles table doesn't have a `role` column.
+
+**Fix Applied**:
+Removed the admin/moderator policy completely. Changed from:
+```sql
+CREATE POLICY "Moderators can see all reviews"
+    ON reviews
+    FOR SELECT
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM profiles
+            WHERE profiles.id = auth.uid()
+            AND profiles.role = 'admin'
+        )
+        OR status = 'approved'
+        OR auth.uid() = user_id
+    );
+```
+
+To:
+```sql
+DROP POLICY IF EXISTS "Moderators can see all reviews" ON reviews;
+
+-- Policy: Anyone can read approved reviews, users can see their own reviews
+CREATE POLICY "Anyone can read approved reviews"
+    ON reviews
+    FOR SELECT
+    USING (status = 'approved' OR auth.uid() = user_id);
+```
+
+**Lines Fixed**: 62-69 (simplified RLS policy)
+
+**Technical Explanation**:
+- Profiles table only has: id, email, full_name, phone, address, city, country, postal_code
+- No role/admin column exists
+- Simplified to only check: approved reviews OR user's own reviews
+- Admin functionality can be added later when role column is added
+
+---
+
+### 3. Payment Flow Improvements Migration
 **File**: `supabase/migrations/20250106_payment_improvements.sql`
 
 **Error**:
